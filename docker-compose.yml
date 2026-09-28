@@ -39,8 +39,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    ports:
-      - "8000:8000"
+    # KHÔNG publish cổng ra host. Host chỉ có một cổng 8000 duy nhất, nên nếu
+    # map thẳng "8000:8000" thì `docker compose up --scale agent=3` sẽ fail với
+    # "port is already allocated" khi tới container thứ 2. `expose` chỉ mở cổng
+    # trong mạng nội bộ compose — đủ để nginx và các agent cùng nhìn thấy nhau,
+    # và scale được bao nhiêu cũng được.
+    expose:
+      - "8000"
     environment:
       # Nội suy biến môi trường: compose đọc từ file .env cùng thư mụng,
       # khóa KHÔNG nằm trong file này.
@@ -67,15 +72,20 @@ services:
       retries: 3
       start_period: 10s
 
-  # Load balancer tùy chọn. Bật lên rồi scale agent ra nhiều bản:
+  # Load balancer tùy chọn. Đây là CỔNG VÀO DUY NHẤT từ host.
+  # Bật lên rồi scale agent ra nhiều bản:
   #     docker compose up -d --scale agent=3
-  # rồi gọi qua cổng 80 thay vì 8000.
+  # rồi gọi qua cổng 8000 — nginx nhận, đẩy vòng xoay tới 3 agent.
   nginx:
     image: nginx:1.27-alpine
     ports:
-      - "80:80"
+      - "8000:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Mount vào nginx.conf gốc chứ không phải conf.d/default.conf: file này
+      # chứa cả khối `events` lẫn `http`, trong khi conf.d chỉ nhận các khối
+      # `server` lồng trong `http`. Mount sai chỗ thì nginx không start được với
+      # lỗi: "events directive is not allowed here".
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
       - agent
     restart: unless-stopped
