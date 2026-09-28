@@ -10,17 +10,17 @@
 
 | Mục | Nội dung |
 |-----|----------|
-| Họ và tên | (điền họ tên) |
-| Mã học viên | (điền mã học viên) |
-| Repo | (điền link repo K4-L3A-DAY12-HoVaTen-MSSV-CloudServicesAndDeployment) |
+| Họ và tên | Nguyễn Văn Chiến |
+| Mã học viên | L3A202602926 |
+| Repo | https://github.com/nvchien19/K4-L3A-Day12-NguyenVanChien-L3A202602926-Cloud-Service-And-Deployment |
 
 ## Service
 
 | Mục | Nội dung |
 |-----|----------|
-| Public URL | https://TODO-thay-bang-url-that.up.railway.app |
-| Platform | Railway / Render / Cloud Run — (điền platform bạn dùng) |
-| Ngày deploy | (điền ngày) |
+| Public URL | _(ghi URL thật lấy từ dashboard Render, dạng https://<tên-service>.onrender.com)_ |
+| Platform | Render (Blueprint, `render.yaml`) |
+| Ngày deploy | _(ghi ngày deploy thật)_ |
 
 ## Biến Môi Trường Đã Set Trên Cloud
 
@@ -28,9 +28,9 @@ Ghi tên biến và **nguồn giá trị**, không ghi giá trị:
 
 | Biến | Đã set | Ghi chú |
 |------|--------|---------|
-| `PORT` | ✅ | platform tự gán |
+| `PORT` | ✅ | platform tự gán, **không** khai báo trong `render.yaml` |
 | `AGENT_API_KEY` | ✅ | đặt trong dashboard, không nằm trong repo |
-| `REDIS_URL` | ✅ | (điền: Redis add-on của platform / Upstash / ...) |
+| `REDIS_URL` | ✅ | Render Key Value instance `day12-redis`, khai báo bằng `fromService` |
 | `RATE_LIMIT_PER_MINUTE` | ✅ | 10 |
 | `MONTHLY_BUDGET_USD` | ✅ | 10.0 |
 | `LOG_LEVEL` | ✅ | INFO |
@@ -68,12 +68,17 @@ for i in $(seq 1 15); do
 done; echo
 ```
 
+> Lưu ý: plan Free của Render **ngủ (spin down) sau ~15 phút không có request**.
+> Lệnh đầu tiên sau khi ngủ có thể mất 30–60 giây. Đó là lý do
+> `test_cp5.py` dùng timeout 60s cho lần gọi đầu. Chạy `curl /health` một
+> lần để "làm ấm" trước khi chạy test.
+
 ## Kết Quả Chạy Thật
 
 Dán output của các lệnh trên vào đây:
 
 ```
-(điền output)
+_(dán output thật sau khi deploy)_
 ```
 
 ## Ảnh Chụp Màn Hình
@@ -94,8 +99,9 @@ Không đăng ký được tài khoản cloud? Vẫn nộp được bài, nhưng
 3. Chụp màn hình vào `screenshots/`
 4. Chạy `pytest tests/test_cp5.py -v` — bộ test sẽ tự chuyển sang kiểm tra
    `http://localhost:8000`
-5. Ghi rõ lý do không deploy được vào phần dưới đây:
+5. Ghi rõ lý do không deploy được vào khối bên dưới:
 
 ```
-(điền lý do nếu dùng phương án dự phòng, ngược lại xóa mục này)
+_(ghi lý do nếu dùng phương án dự phòng; nếu đã deploy thật thì xóa hẳn
+phần "Nếu Dùng Phương Án Dự Phòng" này)_
 ```

@@ -53,8 +53,13 @@ EXPOSE 8000
 
 # Docker tự gọi endpoint này để biết container còn phục vụ được không.
 # Không gửi API key: /health cố tình không yêu cầu xác thực.
+#
+# PHẢI đọc $PORT chứ không hardcode 8000. Trên Render/Railway, platform cấp một
+# cổng ngẫu nhiên (10000 trở lên) chứ không phải 8000; healthcheck ghim cứng
+# 8000 sẽ gọi trúng cổng không có ai lắng nghe và đánh dấu container unhealthy
+# dù app vẫn chạy tốt trên cổng thật.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).read()" || exit 1
+    CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.environ.get('PORT','8000')+'/health', timeout=4).read()" || exit 1
 
 # Cloud tự gán PORT; ${PORT:-8000} để chạy được cả ở máy lẫn trên cloud.
 # 0.0.0.0 chứ không phải 127.0.0.1 — bind localhost thì ngoài container gọi

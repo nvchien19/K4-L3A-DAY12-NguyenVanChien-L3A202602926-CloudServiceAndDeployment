@@ -8,10 +8,17 @@ services:
     name: day12-agent
     runtime: docker
     dockerfilePath: ./Dockerfile
+    dockerContext: .
     plan: free
+    # Render gọi endpoint này để quyết định service đã sẵn sàng nhận traffic
+    # chưa. /health cố ý không gọi Redis: Redis chết một nhịp không nên khiến
+    # Render restart cả web service (xem câu trả lời số 8 trong exercises.md).
     healthCheckPath: /health
+    # Khai báo biến có sẵn trong repo. KHÔNG khai báo PORT: platform tự cấp,
+    # ghim cứng 8000 sẽ khiến app không lắng nghe đúng cổng được cấp.
     envVars:
       - key: AGENT_API_KEY
+        # sync: false = Render hỏi giá trị lúc deploy, KHÔNG lưu secret vào repo
         sync: false
       - key: LOG_LEVEL
         value: INFO
@@ -22,10 +29,23 @@ services:
       - key: REDIS_URL
         fromService:
           name: day12-redis
-          type: redis
+          type: keyvalue
           property: connectionString
 
-  - type: redis
+  - type: keyvalue
     name: day12-redis
     plan: free
-    ipAllowList: []
+    # maxmemoryPolicy: noeviction — mặc định của Render là allkeys-lru, tức
+    # hết RAM là Redis TỰ Ý xoá key cũ. Với lab này điều đó rất nguy hiểm:
+    # mất key `cost:*` nghĩa là cost guard quên user đã tiêu bao nhiêu và cho
+    # qua lại, mất key `ratelimit:*` nghĩa là hạn mức 10/phút bị reset và
+    # bypass được. noeviction = hết RAM thì trả lỗi lệch chứ không âm thầm
+    # xoá dữ liệu tài chính.
+    maxmemoryPolicy: noeviction
+    persistenceMode: off
+    # ipAllowList: phải cho phép kết nối từ mọi nơi, vì free Key Value chỉ nhận
+    # kết nối public. Danh sách rỗng sẽ chặn cả chính web service.
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: web service trong cùng workspace Render
+
