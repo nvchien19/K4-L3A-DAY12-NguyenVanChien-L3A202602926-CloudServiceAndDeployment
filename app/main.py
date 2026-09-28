@@ -154,7 +154,42 @@ def ask(
     ``user_id`` do ``verify_api_key`` trả về, nên request không có API key
     hợp lệ sẽ dừng ở 401 trước khi chạm vào bất cứ dòng nào ở đây.
     """
-    raise NotImplementedError("TODO (CP3/CP4): cài đặt /ask")
+    # 1-2. Chặn TRƯỚC khi gọi LLM. Tiền chỉ mất ở bước ask_llm, chặn sau
+    #      thì vừa mất tiền vừa trả lỗi cho user.
+    limiter.check(user_id)
+    guard.check(user_id)
+
+    # 3. Lịch sử nằm ở Redis, nên mọi instance đều thấy cùng một dữ liệu.
+    history = store.get_history(user_id)
+
+    # 4. Gọi LLM với lịch sử làm ngữ cảnh.
+    result = ask_llm(payload.question, history)
+
+    # 5. Ghi lại cả lượt hỏi lẫn lượt trả lời.
+    store.append(user_id, "user", payload.question)
+    store.append(user_id, "assistant", result["answer"])
+
+    # 6. Cộng dồn chi phí — không có bước này thì cost guard vô dụng.
+    guard.record(user_id, result["cost_usd"])
+
+    # 7. Log có cấu trúc để sau này trả lời được "ai tiêu nhiều tiền nhất".
+    log_event(
+        "ask_completed",
+        user_id=user_id,
+        tokens_in=result["tokens_in"],
+        tokens_out=result["tokens_out"],
+        cost_usd=result["cost_usd"],
+    )
+
+    # 8. history_length = số message ĐÃ CÓ trước khi hỏi, nên lượt đầu tiên
+    #    trả về 0.
+    return {
+        "answer": result["answer"],
+        "user_id": user_id,
+        "history_length": len(history),
+        "cost_usd": result["cost_usd"],
+        "tokens": {"in": result["tokens_in"], "out": result["tokens_out"]},
+    }
 
 
 if __name__ == "__main__":
