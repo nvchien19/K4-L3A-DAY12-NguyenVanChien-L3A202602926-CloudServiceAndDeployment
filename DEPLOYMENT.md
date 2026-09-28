@@ -18,8 +18,8 @@
 
 | Mục | Nội dung |
 |-----|----------|
-| Public URL | _(ghi URL thật lấy từ dashboard Render, dạng https://<tên-service>.onrender.com)_ |
-| Platform | Render (Blueprint, `render.yaml`) |
+| Public URL | https://k4-l3a-day12-nguyenvanchien-l3a202602926-cloud-s-production.up.railway.app |
+| Platform | Railway (Dockerfile + `railway.toml`) |
 | Ngày deploy | _(ghi ngày deploy thật)_ |
 
 ## Biến Môi Trường Đã Set Trên Cloud
@@ -30,7 +30,7 @@ Ghi tên biến và **nguồn giá trị**, không ghi giá trị:
 |------|--------|---------|
 | `PORT` | ✅ | platform tự gán, **không** khai báo trong `render.yaml` |
 | `AGENT_API_KEY` | ✅ | đặt trong dashboard, không nằm trong repo |
-| `REDIS_URL` | ✅ | Render Key Value instance `day12-redis`, khai báo bằng `fromService` |
+| `REDIS_URL` | ✅ | Redis service của Railway, khai báo bằng reference `${{Redis(<tên service>)}}` |
 | `RATE_LIMIT_PER_MINUTE` | ✅ | 10 |
 | `MONTHLY_BUDGET_USD` | ✅ | 10.0 |
 | `LOG_LEVEL` | ✅ | INFO |

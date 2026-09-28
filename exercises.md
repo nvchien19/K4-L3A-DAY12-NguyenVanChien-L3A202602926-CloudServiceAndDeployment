@@ -6,7 +6,7 @@
 > Cách trả lời: thay dòng giữ chỗ bằng câu trả lời của bạn.
 > `grade.py` đếm số câu đã trả lời (15 điểm cho 10 câu).
 >
-> Họ và tên: Nguyễn Văn Chiến  Mã học viên: L3A202602926
+> Họ và tên: Nguyễn Văn Chiến  Mã học viên: 2A202602926
 
 ---
 
@@ -16,15 +16,17 @@ Trong `Settings`, `agent_api_key` không có giá trị mặc định nên app c
 khi khởi động nếu thiếu biến môi trường. Hãy mô tả một tình huống cụ thể mà
 việc "chết sớm" này cứu bạn, so với việc để mặc định `"changeme"`.
 
-Tình huống của tôi: tôi deploy lên Render bằng `render.yaml`, và trong file đó tôi
-quên khai báo `AGENT_API_KEY` trong khối `envVars`. Lúc này có hai cách xử lý:
+Tình huống của tôi: tôi deploy lên Railway bằng Dockerfile, và trong lúc thiết lập
+biến môi trường tôi thêm `AGENT_API_KEY` vào đúng ô Variables — nhưng quên bấm
+**Deploy** trên banner "staged changes". Lúc này có hai cách xử lý:
 
 - **Cách hiện tại (không có giá trị mặc định):** `Settings()` ném `ValidationError`
-  ngay trong lúc uvicorn import `app.main`. Container start rồi chết ngay, Render
-  đánh dấu deploy là **Failed** kèm log `Field required [type=missing]`. Tôi đọc
-  log là biết ngay thiếu biến gì, sửa `render.yaml`, deploy lại — mất 2 phút.
+  ngay khi nó được gọi, log của Railway ghi rõ
+  `1 validation error for Settings / agent_api_key / Field required [type=missing,
+  input_value={'port': '8080'}]`. Tôi đọc log là biết ngay thiếu biến gì, sửa
+  xong deploy lại — mất 2 phút.
 - **Nếu có mặc định `"changeme"`:** app vẫn boot bình thường, `/health` trả 200,
-  Render báo deploy **thành công**. Tôi sẽ tin là xong và đi khoe link. Nhưng mọi
+  Railway báo deploy **thành công**. Tôi sẽ tin là xong và đi khoe link. Nhưng mọi
   request `POST /ask` đều đi kèm header `X-API-Key: changeme`, và kẻ tấn công chỉ
   cần đoán ra chuỗi mặc định này là gọi được miễn phí. Tôi phải mở log từng dòng
   `ask_completed` mới phát hiện có lưu lượng lạ từ IP không rõ nguồn, lúc đó
@@ -36,6 +38,22 @@ dưới dạng hoá đơn tiền API. Fail fast đổi "lỗi im lặng lúc 3h 
 to, ồn, xuất hiện ngay ở lần deploy đầu tiên". Ngoài ra ở đây còn một lý do kỹ
 thuật: secret mặc định nằm sẵn trong code nên nó đã được commit lên Git — ai đọc
 repo cũng có, nên coi như không còn bí mật nữa.
+
+**Điều tôi phát hiện khi thực tế triển khai, và nó làm câu trả lời này bớt đẹp hơn
+một chút:** ở bản code của tôi, fail fast **không** xảy ra đúng như tên gọi. Kiểm
+lại thì `Settings()` chỉ được gọi *lười* (lazy) bên trong dependency `get_store`,
+còn trong `if __name__ == "__main__"` thì không bao giờ chạy khi deploy, vì Docker
+chạy `uvicorn app.main:app` chứ không chạy `python -m app.main`. Hệ quả rất rõ
+ràng: thiếu `AGENT_API_KEY` thì container **vẫn khởi động thành công**, Railway báo
+`Success`, `/health` trả `200 {"status":"ok"}` — còn mọi `/ask` và `/ready` đều
+`500`. Tức là liveness xanh trong khi toàn bộ chức năng chết.
+
+Đây là cái giá của việc chọn "validate lười cho app khởi động nhanh": nó đổi lỗi
+to ồn *lúc deploy* thành lỗi *im lặng lúc chạy*. Tôi biết rõ điều này là do
+chính cách tôi tổ chức code, không phải do pydantic — `agent_api_key` bắt buộc là
+đúng, nhưng chỗ gọi nó thì sai. Nếu phải sửa, tôi sẽ gọi `get_settings()` một
+lần trong `lifespan` lúc khởi động: như vậy vẫn fail fast đúng nghĩa (thiếu biến
+là chết ngay, log nói rõ tên biến), mà không hy sinh gì về tốc độ boot.
 
 ---
 
@@ -53,9 +71,8 @@ không làm được.
 ```
 
 **Việc 1 — cộng dồn chi phí theo từng user mà không cần sửa code.** Mỗi dòng có
-`cost_usd` và `user_id` ở đúng vị trí, nên trên Render tôi vào dashboard
-"Logs → Query" gõ `json_extract(cost_usd)` là ra bảng xếp hạng ai tiêu nhiều
-tiền nhất, không cần đụng vào app. Với `print("đã trả lời xong")` thì dòng log
+`cost_usd` và `user_id` ở đúng vị trí, nên trên Railway tôi mở tab **Logs** và lọc
+theo `user_id` là ra ngay danh sách ai tiêu nhiều tiền nhất, không cần đụng vào app. Với `print("đã trả lời xong")` thì dòng log
 đó không có con số nào để lấy — muốn biết user nào tốn tiền thì phải sửa code
 để in ra, rồi deploy lại, rồi chờ có traffic.
 
@@ -396,59 +413,81 @@ Ghi lại **một** lỗi bạn gặp khi deploy lên cloud (build fail, health 
 timeout, sai REDIS_URL, app không đọc `$PORT`...): thông báo lỗi là gì, bạn
 tìm ra nguyên nhân bằng cách nào, và sửa ra sao?
 
-Lỗi tôi gặp là **lỗi local trong compose, đúng loại lỗi mà nếu không chạy thật
-thì sẽ chỉ phát hiện khi đã lên cloud**: cấu hình scale của mình không chạy
-được với 3 container.
+Lỗi tôi gặp thật khi deploy lên Railway: **`/ask` trả `500` thay vì `401`, dù
+`AGENT_API_KEY` đã được khai báo trên dashboard.**
 
 **Thông báo lỗi:**
 
-```
-Error response from daemon: failed to set up container networking:
-driver failed programming external connectivity on endpoint
-...-agent-3 (...): Bind for 0.0.0.0:8000 failed: port is already allocated
-```
-
-Container `agent-1` lên được rồi `agent-3` báo lỗi. Song song, `nginx` cũng đang
-lặp vòng `Restarting (1)` với:
+Khi gọi `POST /ask` không kèm key lên public URL, tôi nhận `500` thay vì `401`.
+Traceback trong log Railway:
 
 ```
-nginx: [emerg] 1#1: "events" directive is not allowed here
-in /etc/nginx/conf.d/default.conf:8
+File "/app/app/main.py", line 44, in get_store
+    return ConversationStore(get_redis_client())
+File "/app/app/store.py", line 28, in get_redis_client
+    url = url or get_settings().redis_url
+File "/app/app/config.py", line 66, in get_settings
+    return Settings()
+pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+agent_api_key
+  Field required [type=missing, input_value={'port': '8080'}, input_type=dict]
 ```
 
-**Tìm ra nguyên nhân bằng cách nào:** tôi đọc log thay vì đoán. Với nginx, dòng lỗi
-chỉ rõ file và dòng (`conf.d/default.conf:8`) — vị trí đó đúng là khối `events`
-trong `nginx/nginx.conf` của tôi, nên nguyên nhân là **mount nhầm chỗ**: tôi gắn
-file vào `/etc/nginx/conf.d/default.conf`, nhưng thư mục `conf.d` chỉ nhận các
-khối `server` *lồng trong* `http`; khối `events` chỉ được phép ở cấp ngoài cùng
-nên phải mount vào `/etc/nginx/nginx.conf`.
+Điểm mấu chốt nằm ở `input_value={'port': '8080'}`: trong container chỉ có **một
+biến duy nhất** là `PORT`. Không có `AGENT_API_KEY`, không có `REDIS_URL`.
 
-Với lỗi port, tôi hiểu ngay vì đã học quy tắc "mỗi container publish ra host
-một cổng cố định thì chỉ chạy được một bản": `ports: - "8000:8000"` của tôi khiến
-cả 3 container đều đòi chiếm cùng cổng 8000 trên host — mà host chỉ có một cổng
-8000. Cách xác nhận là nhìn `docker compose ps` và thấy `agent-1` healthy,
-`agent-3` không có, còn `nginx` restart.
+**Tìm ra nguyên nhân bằng cách nào:**
 
-**Sửa ra sao:** hai thay đổi, cùng một ý tưởng là *tách cổng vào từ host ra khỏi
-các container worker*:
+Ban đầu tôi tưởng lỗi nằm ở code nên đọc `config.py` và `auth.py` — không ra.
+Chuyển sang đọc log thật của container thì mới hiểu: vì traceback in ra *toàn bộ*
+giá trị biến môi trường mà pydantic đọc được, nên nó vừa chỉ ra thiếu gì vừa chỉ ra
+còn gì. Chỉ có `PORT` nghĩa là vấn đề không nằm trong code mà nằm ở **biến không
+tới được container**.
 
-1. Đổi `ports: ["8000:8000"]` của `agent` thành `expose: ["8000"]`. `expose` chỉ
-   mở cổng **trong mạng nội bộ compose**, đủ cho nginx và các agent cùng thấy
-   nhau mà **không giành cổng host** — scale bao nhiêu bản cũng được. Chỉ `nginx`
-   mới `ports: ["8000:80"]`, tức host có đúng một cổng vào.
-2. Mount `nginx.conf` vào `/etc/nginx/nginx.conf` thay vì `conf.d/default.conf`.
+Nhưng tôi đã dán `AGENT_API_KEY` vào tab Variables rồi. Đó là chỗ tôi mất lâu nhất.
+Railway không deploy tự động khi bạn thêm biến: thêm/sửa biến chỉ tạo ra
+**staged changes**, và phải bấm **Deploy** trên banner màu tím ở đầu màn hình project
+thì mới có hiệu lực. Tôi đã thử lại: bấm nút redeploy của service, và push commit
+mới lên GitHub — cả hai đều **không** áp dụng staged changes, vì chúng chỉ build
+lại code, không commit phần thay đổi biến. Đây là điểm dễ bỏ qua nhất, vì giao
+diện nhìn rất giống nhau.
 
-Sau khi sửa, `--scale agent=3` lên cả 3 container đều `healthy`, nginx `Started`,
-và test Câu 9 ở trên (6 lượt, round-robin 2/2/2, `history_length` tăng đều) chạy
-trên chính stack này.
+**Sửa ra sao:** quay về trang chính project (lưới các ô service, không phải trong
+service), bấm **Deploy** trên banner staged changes. Sau đó tôi kiểm lại: `/ask`
+không key trả đúng `401` như thiết kế. Bằng chứng là trước và sau khác hẳn, và
+tôi không sửa một dòng code nào.
 
-**Bài học tôi rút ra, và cũng là lý do tôi ghi lại lỗi này:** cả hai lỗi đều
-không liên quan gì đến code Python — chúng nằm ở tầng cấu hình hạ tầng, nơi
-`pytest` không chạm tới. `tests/test_cp2.py` chỉ parse YAML và kiểm tra có
-service `agent`, có `healthcheck`, `REDIS_URL` trỏ đúng... nên nó **xanh** trong
-khi `docker compose up` thì vẫn nổ. Cùng một stack đó, đẩy lên cloud với
-cổng do platform cấp sẽ sinh ra biến thể khác của chính lỗi này (ví dụ app
-hardcode 8000 trong khi Render cấp cổng khác → health check timeout). Đây là
-lý do tôi cần chạy stack thật thay vì chỉ tin test: test xanh là điều kiện cần,
-không phải điều kiện đủ.
+**Lỗi thứ hai chặn tôi lâu hơn, cùng một lần deploy:** sau khi thêm đủ hai biến,
+`/ready` vẫn `500`. Lần này tôi đoán sai một lần — tưởng Redis chết. Tôi tái hiện
+lại client giống hệt trong app và nối thử từ máy mình, thì ra `redis://` tới
+Upstash bị đóng kết nối còn `rediss://` thì `ping()` trả `True`. Nguyên nhân: tôi
+copy **cả câu lệnh CLI** thay vì chỉ phần URL:
+
+```
+# sai — giá trị tôi đã dán
+"redis-cli --tls -u redis://default:TOKEN@cool-condor-312297.upstash.io:6379"
+
+# đúng
+rediss://default:TOKEN@cool-condor-312297.upstash.io:6379
+```
+
+Cái sai đó làm `redis.from_url` ném
+`ValueError: Redis URL must specify one of the following schemes (redis://, rediss://, unix://)`
+— và vì `get_redis_client()` được gọi bên trong dependency nên lỗi nổi ra thành
+`500`, không phải `503`. Sửa lại thành URL thuần với `rediss://` là `/ready` chuyển
+từ `500` sang `503`, tức là client đã dựng được, chỉ còn chờ Redis trả lời.
+
+**Bài học tôi rút ra, và chỗ nó khiến tôi sửa code:** cả ba lỗi trên đều **không**
+liên quan tới logic Python. Chúng nằm ở tầng cấu hình hạ tầng — nơi `pytest`
+không chạm tới. `tests/test_cp5.py` kiểm URL có `https://` và tài liệu có ghi
+public URL không, nên nó xanh trong khi production trả `500`. Test xanh là điều
+kiện cần, không phải điều kiện đủ.
+
+Còn một điều nữa tôi phải sửa trong code vì gặp lỗi này: `ping()` nuốt exception
+để `/ready` trả `503` chứ không thành `500` — đúng ý đồ, nhưng nó **giấu luôn
+nguyên nhân**, và log chỉ còn trống. Tôi đã thêm `logger.warning` in ra loại lỗi
+và message. Với hệ thống thật, một readiness probe trả `503` mà không kèm lý do
+thì vô dụng trong lúc sự cố: bạn biết nó hỏng, mà không biết hỏng vì mạng, sai
+mật khẩu, hay cert hết hạn.
+
 
