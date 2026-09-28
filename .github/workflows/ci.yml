@@ -1,0 +1,106 @@
+name: CI/CD
+
+# `pull_request` là phần giá trị nhất: lỗi bị bắt TRƯỚC khi vào nhánh chính.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # ── 1. Test trên máy sạch ─────────────────────────────────
+  # Máy CI không có file .env của tôi, nên config phải đến từ biến môi
+  # trường — đây chính là lợi ích của 12-Factor ở CP1.
+  test:
+    name: Test (pytest)
+    runs-on: ubuntu-latest
+    env:
+      AGENT_API_KEY: ci-dummy-key
+      REDIS_URL: "fake://"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cai Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Cai thu vien
+        run: pip install -r requirements.txt
+
+      - name: Chay checkpoint
+        # -m "not docker": test build image chậm và cần Docker daemon.
+        # --ignore=tests/test_cp5.py: file đó gọi vào bản deploy đang sống,
+        #   trong CI sẽ luôn đỏ hoặc treo chờ mạng.
+        # --ignore=tests/test_bonus_cicd.py: nó kiểm tra chính workflow này,
+        #   chạy ở đây là tự tham chiếu vòng tròn.
+        run: |
+          pytest tests/ -v -m "not docker" \
+            --ignore=tests/test_cp5.py \
+            --ignore=tests/test_bonus_cicd.py
+
+  # ── 2. Build image trên máy sạch ───────────────────────────
+  # Bắt lỗi kiểu "file này chỉ có trên máy tôi" hoặc .dockerignore loại nhầm
+  # thứ mà image cần — những lỗi build ngon trên laptop nhưng hỏng trên Linux.
+  build:
+    name: Build Docker image
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: |
+          docker build -t day12-agent:ci .
+          docker images day12-agent:ci
+
+  # ── 3. Deploy — chỉ chạy khi mọi thứ xanh ──────────────────
+  # `needs` làm cho job này chờ test VÀ build; thiếu nó thì GitHub chạy song
+  # song và code hỏng vẫn lên production trong khi test đang đỏ.
+  # `if` chặn việc mỗi pull request kéo theo một lần deploy.
+  deploy:
+    name: Deploy len production
+    needs: [test, build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy bang Railway CLI
+        # Token chỉ tồn tại trong GitHub Secrets. Dán thẳng vào file YAML này
+        # là nó nằm vĩnh viễn trong lịch sử git — xóa ở commit sau không
+        # làm nó biến mất.
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
+          RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ]; then
+            echo "::notice::Chua co RAILWAY_TOKEN trong GitHub Secrets — bo qua deploy."
+            exit 0
+          fi
+          npm install -g @railway/cli
+          railway up --detach --ci \
+            --project "$RAILWAY_PROJECT_ID" \
+            --environment "$RAILWAY_ENVIRONMENT_ID" \
+            --service "$RAILWAY_SERVICE_ID" \
+            -m "commit ${GITHUB_SHA::8}"
+
+      - name: Smoke test ban vua deploy
+        # Deploy xong mà không kiểm tra thì chỉ biết "lệnh chạy xong",
+        # không biết "service còn sống". curl -f trả mã lỗi khi HTTP ≠ 2xx
+        # → job đỏ → biết ngay.
+        if: ${{ vars.PUBLIC_URL != '' }}
+        run: |
+          sleep 45
+          echo "Kiem tra ${{ vars.PUBLIC_URL }}/health"
+          curl -fsS "${{ vars.PUBLIC_URL }}/health"
