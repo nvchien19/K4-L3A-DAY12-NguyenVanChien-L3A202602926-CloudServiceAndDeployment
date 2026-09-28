@@ -9,6 +9,7 @@ nằm ở nơi mọi instance cùng nhìn thấy: Redis.
 from __future__ import annotations
 
 import json
+import logging
 
 import redis
 
@@ -16,6 +17,8 @@ from .config import get_settings
 
 HISTORY_MAX_MESSAGES = 20
 HISTORY_TTL_SECONDS = 7 * 24 * 3600
+
+logger = logging.getLogger(__name__)
 
 
 def get_redis_client(url: str | None = None):
@@ -53,9 +56,12 @@ class ConversationStore:
         """
         try:
             return bool(self.client.ping())
-        except Exception:
+        except Exception as exc:
             # Nuốt lỗi: /ready dùng kết quả này để quyết định 503 hay 200.
             # Để exception thoát ra sẽ biến readiness probe thành lỗi 500.
+            # Vẫn log lại, nếu không thì lỗi kết nối bị giấu hoàn toàn và
+            # không phân biệt được "sai mật khẩu" với "mạng chặn".
+            logger.warning("Redis ping that bai: %s: %s", type(exc).__name__, exc)
             return False
 
     def append(self, user_id: str, role: str, content: str) -> None:
