@@ -87,7 +87,16 @@ def health():
     lời câu hỏi "có cần restart container này không?". Nếu nó phụ thuộc
     Redis, Redis chết một nhịp là cả cụm container bị restart theo.
     """
-    raise NotImplementedError("TODO (CP1/CP4): cài đặt /health")
+    if lifecycle.shutting_down:
+        # 503 để load balancer rút instance này khỏi vòng xoay. Orchestrator
+        # đọc /health để quyết định có restart hay không.
+        return JSONResponse(status_code=503, content={"status": "shutting_down"})
+
+    return {
+        "status": "ok",
+        "service": SERVICE_NAME,
+        "version": SERVICE_VERSION,
+    }
 
 
 @app.get("/ready")

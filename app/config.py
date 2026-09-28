@@ -40,9 +40,24 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # TODO (CP1): khai báo 6 trường theo bảng trên, ví dụ:
-    #     port: int = 8000
-    #     agent_api_key: str
+    # ── Cổng HTTP ────────────────────────────────────────────
+    # Có mặc định vì đây không phải secret. Trên cloud, platform tự set PORT.
+    port: int = 8000
+
+    # ── Secret ───────────────────────────────────────────────
+    # KHÔNG có mặc định: thiếu biến này thì Settings() ném ValidationError
+    # ngay lúc khởi động, thay vì để app chạy với một khóa bị đoán.
+    agent_api_key: str
+
+    # ── Phụ thuộc ────────────────────────────────────────────
+    redis_url: str = "redis://localhost:6379/0"
+
+    # ── Hạn mức ──────────────────────────────────────────────
+    rate_limit_per_minute: int = 10
+    monthly_budget_usd: float = 10.0
+
+    # ── Logging ──────────────────────────────────────────────
+    log_level: str = "INFO"
 
 
 @lru_cache(maxsize=1)
