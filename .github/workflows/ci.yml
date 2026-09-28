@@ -71,29 +71,32 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Deploy bang Railway CLI
-        # Token chỉ tồn tại trong GitHub Secrets. Dán thẳng vào file YAML này
-        # là nó nằm vĩnh viễn trong lịch sử git — xóa ở commit sau không
-        # làm nó biến mất.
+      - name: Kich hoat deploy tren Render
+        # Khóa API chỉ tồn tại trong GitHub Secrets. Dán thẳng giá trị vào
+        # file YAML này là nó nằm vĩnh viễn trong lịch sử git — xóa ở commit
+        # sau không làm nó biến mất.
+        #
+        # Gọi REST API của Render: tạo một "deploy" cho service từ commit
+        # hiện tại. Render tự build image Docker từ Dockerfile trong repo và
+        # tự set $PORT, nên workflow không cần cài Docker hay railway/render
+        # CLI.
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-          RAILWAY_ENVIRONMENT_ID: ${{ vars.RAILWAY_ENVIRONMENT_ID }}
-          RAILWAY_SERVICE_ID: ${{ vars.RAILWAY_SERVICE_ID }}
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+          RENDER_SERVICE_ID: ${{ vars.RENDER_SERVICE_ID }}
         run: |
-          if [ -z "$RAILWAY_TOKEN" ]; then
-            echo "::notice::Chua co RAILWAY_TOKEN trong GitHub Secrets — bo qua deploy."
+          if [ -z "$RENDER_API_KEY" ]; then
+            echo "::notice::Chua co RENDER_API_KEY trong GitHub Secrets — bo qua deploy."
             exit 0
           fi
-          npm install -g @railway/cli
-          railway up --detach --ci \
-            --project "$RAILWAY_PROJECT_ID" \
-            --environment "$RAILWAY_ENVIRONMENT_ID" \
-            --service "$RAILWAY_SERVICE_ID" \
-            -m "commit ${GITHUB_SHA::8}"
+
+          echo "Kich hoat deploy service $RENDER_SERVICE_ID tu commit ${GITHUB_SHA::8}"
+          # -f trả mã lỗi khi HTTP >= 400, nên deploy hỏng sẽ làm job đỏ
+          # thay vì im lặng báo thành công.
+          curl -fsS -X POST \
+            "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys" \
+            -H "Authorization: Bearer $RENDER_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"clearCache\":\"do_not_clear\",\"commitId\":\"$GITHUB_SHA\"}"
 
       - name: Smoke test ban vua deploy
         # Deploy xong mà không kiểm tra thì chỉ biết "lệnh chạy xong",
